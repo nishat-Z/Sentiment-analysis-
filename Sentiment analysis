@@ -1,0 +1,177 @@
+# Importing required packages
+
+import sqlite3
+import pandas as pd
+import numpy as np
+import string
+import nltk
+import matplotlib.pyplot as plt
+import seaborn as sn
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_curve,auc
+from sklearn import metrics 
+from nltk.corpus import stopwords
+from nltk.stem.porter import PorterStemmer
+from nltk.stem.wordnet import WordNetLemmatizer
+from os import path
+from PIL import Image
+from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+
+
+# Importing data 
+
+df=pd.read_excel(input("enter the path of the data file"))
+# df.head(1)
+
+# Data Cleaning
+
+df.query('Score != 3', inplace = True) 
+
+def partition(x):
+    if x<3:
+        return 1
+    else:
+        return 0
+
+filtered_score=df['Score']
+pos_neg=filtered_score.map(partition)
+df['Score']=pos_neg
+df.shape[0]
+
+
+sorted_data=df.sort_values('ProductId', axis=0, ascending=True, inplace =True)
+
+final_data=df.drop_duplicates(subset={"UserId","ProfileName","Time","Text"},keep='first',inplace=False)
+final_data.shape
+
+(final_data['Id'].size*1.0/filtered_data['Id'].size*1.0)*100
+
+final_data=final_data[final_data.HelpfulnessNumerator<=final_data.HelpfulnessDenominator]
+final_data.shape
+final_data['Score'].value_counts()
+
+(final_data['Id'].size*1.0)/(df['Id'].size*1.0)*100
+
+# Data Pre-processing
+
+import re
+i=0
+for sen in final_data['Text'].values:
+    if (len(re.findall('<.*?>',sen))):
+        print(i)
+        print(sen)
+        break;
+    i+=1;
+
+
+
+stop=set(stopwords.words('english'))
+# print(stop)
+sno = nltk.stem.SnowballStemmer('english')
+
+def removehtml(sentence):
+    cleanh = re.compile('<.*?>')
+    cleantext= re.sub(cleanh, ' ', sentence)
+    return cleantext
+
+def removepunc(sentence):
+    cleaned=re.sub(r'[?|!|\'|"|#]',r'',sentence)
+    cleaned=re.sub(r'[.|,|)|(|\|/]',r' ',cleaned)
+    return cleaned
+#print(stop)
+
+i=0
+strl = " "
+final = []
+positive_review = []
+negative_review = []
+
+s = ''
+for sen in final_data['Text'].values:
+
+    mixgoodbad = []
+    sen=removehtml(sen)
+    for w in sen.split():
+        for cleaned_words in removepunc(w).split():
+            if ((cleaned_words.isalpha()) & (len(cleaned_words)>2)):
+                if (cleaned_words.lower() not in stop):
+                    s = (sno.stem(cleaned_words.lower())).encode('utf8')
+                    if (final_data['Score'].values)[i]== 1:
+                        positive_review.append(s)
+                        mixgoodbad.append(s)
+                    if (final_data['Score'].values)[i]== 0:
+                        negative_review.append(s)
+                        mixgoodbad.append(s)
+                else:
+                    continue;
+            else:
+                continue;
+    strl = b" ".join(mixgoodbad)
+    final.append(strl)
+    i+=1;
+final_data['CleanedText']=final
+# print(positive_review)
+print(len(positive_review))
+print(len(negative_review))
+print(final[10])
+
+x_df=final_data[['Score','CleanedText']]
+y=final_data['Score']
+
+
+# Featurization
+
+count_vect = CountVectorizer(ngram_range=(1,2), min_df=10, max_features=5000)
+x_train = count_vect.fit_transform(x_df['CleanedText'])
+x_test = count_vect.fit_transform(x_df['CleanedText'])
+print("the type of count vectorizer ",type(x_train))
+print("the shape of out text BOW vectorizer ",x_train.get_shape())
+print("the number of unique words including both unigrams and bigrams ", x_train.get_shape()[1])
+
+
+X_train, X_test, y_train, y_test = train_test_split(x_train, y, test_size=0.2)
+print (X_train.shape)
+print(y_train.shape)
+print (X_test.shape)
+print(y_test.shape)
+# x_train=final.head(1832)
+
+
+
+# Model Fitting
+
+logreg = LogisticRegression()
+model = logreg.fit(X_train, y_train)
+predictions = logreg.predict(X_test)
+
+
+
+# clf=RandomForestClassifier(n_estimators=100)
+# # Train the model on training data
+# clf.fit(X_train, y_train);
+# predictions = clf.predict(X_test)
+
+
+
+# Model Evaluation
+
+print('Accuracy of logistic regression classifier on test set: {:.2f}'.format(logreg.score(X_test, y_test)))
+
+# Visualization of Review
+
+final_data['CleanedText'] = final_data['CleanedText'].astype(str)
+text = " ".join(final_data['CleanedText'])
+print ("There are {} words in the combination of all review.".format(len(text)))
+#Create and generate a word cloud image:
+wordcloud = WordCloud(stopwords=stop, background_color="black").generate(text)
+
+# Display the generated image:
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.axis("off")
+plt.show()
+
